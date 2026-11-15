@@ -66,12 +66,13 @@ func main() {
 		})
 
 		// 编辑一个代办事项
-		// 仅修改 status 取反
+
 		v1Group.PUT("/todo/:id", func(c *gin.Context) {
 			var td Todo
 			id := c.Param("id")
 			db.Where("id=?", id).First(&td)
-			db.Model(&td).Update("status", !td.Status)
+			c.BindJSON(&td)
+			db.Save(&td)
 			c.JSON(http.StatusOK, td)
 		})
 	}
