@@ -1,80 +1,80 @@
 package middleware
 
 import (
-    "net/http"
-    "strings"
+	"net/http"
+	"strings"
 
-    "github.com/gin-gonic/gin"
-    "github.com/golang-jwt/jwt/v5"
+	"github.com/gin-gonic/gin"
+	"github.com/golang-jwt/jwt/v5"
 
-    "main/models"
+	"main/models"
 )
 
 var jwtSecret = []byte("replace-this-with-a-long-random-secret")
 
 func AuthMiddleware() gin.HandlerFunc {
 
-    return func(c *gin.Context) {
+	return func(c *gin.Context) {
+		// 获取claims
+		// 获取 Authorization Header
+		authHeader := c.GetHeader("Authorization")
 
-        // 获取 Authorization Header
-        authHeader := c.GetHeader("Authorization")
+		if authHeader == "" {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
+				"message": "Missing Authorization header",
+			})
+			return
+		}
 
-        if authHeader == "" {
-            c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
-                "message": "Missing Authorization header",
-            })
-            return
-        }
+		// 分割 Bearer 和 Token
+		parts := strings.SplitN(authHeader, " ", 2)
+		// 错误判断
+		if len(parts) != 2 || parts[0] != "Bearer" || parts[1] == "" {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
+				"message": "Invalid Authorization format",
+			})
+			return
+		}
 
-        // 分割 Bearer 和 Token
-        parts := strings.SplitN(authHeader, " ", 2)
+		tokenString := parts[1]
 
-        if len(parts) != 2 || parts[0] != "Bearer" || parts[1] == "" {
-            c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
-                "message": "Invalid Authorization format",
-            })
-            return
-        }
+		// 解析和验证 claims
+		token, err := jwt.ParseWithClaims(
+			tokenString,
+			&models.Claims{}, // 指定payload格式
+			func(token *jwt.Token) (interface{}, error) {
 
-        tokenString := parts[1]
+				// 只允许 HS256
+				if token.Method != jwt.SigningMethodHS256 {
+					return nil, jwt.ErrSignatureInvalid
+				}
+				return jwtSecret, nil
+			},
+		)
 
-        // 解析和验证 JWT
-        token, err := jwt.ParseWithClaims(
-            tokenString,
-            &models.Claims{},
-            func(token *jwt.Token) (interface{}, error) {
+		if err != nil || !token.Valid {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
+				"message": "Invalid or expired token",
+			})
+			return
+		}
 
-                // 只允许 HS256
-                if token.Method != jwt.SigningMethodHS256 {
-                    return nil, jwt.ErrSignatureInvalid
-                }
+		// 提取 Claims
+		claims, ok := token.Claims.(*models.Claims)
+		if !ok {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
+				"message": "Invalid token claims",
+			})
+			return
+		}
 
-                return jwtSecret, nil
-            },
-        )
+		{
+			// 将用户信息存入 Gin Context
+			c.Set("user_id", claims.UserID)
+			c.Set("role", claims.Role)
 
-        if err != nil || !token.Valid {
-            c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
-                "message": "Invalid or expired token",
-            })
-            return
-        }
-
-        // 提取 Claims
-        claims, ok := token.Claims.(*models.Claims)
-
-        if !ok {
-            c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
-                "message": "Invalid token claims",
-            })
-            return
-        }
-
-        // 将用户信息存入 Gin Context
-        c.Set("user_id", claims.UserID)
-        c.Set("role", claims.Role)
-
-        // 放行
-        c.Next()
-    }
+			// 放行
+			c.Next()
+		}
+	}
 }

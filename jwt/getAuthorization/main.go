@@ -16,7 +16,7 @@ func main() {
 
     // 需要认证的路由组
     api := r.Group("/api")
-
+    // 载入中间件，判断用户token
     api.Use(middleware.AuthMiddleware())
 
     // 需要登录才能访问
